@@ -1,4 +1,5 @@
 const app = require("@live-change/framework").app()
+const { createHmac } = require('crypto')
 
 const definition = app.createServiceDefinition({
   name: "session"
@@ -38,8 +39,9 @@ definition.view({
   returns: {
     type: Session
   },
-  daoPath(params, { client, context }, method) {
+  daoPath(params, { client, context }) {
     //return Session.path(client.session)
+    console.log("CURRENT SESSION(", client.session)
     return ['database', 'queryObject', app.databaseName, `(${
       async (input, output, { session, tableName }) => {
         const mapper = (obj) => (obj || {
@@ -55,7 +57,7 @@ definition.view({
           storedObj = mappedObj
         })
       }
-    })`, { session: client.sessionId, tableName: Session.tableName }]
+    })`, { session: client.session, tableName: Session.tableName }]
   }
 })
 
@@ -277,8 +279,10 @@ definition.authenticator(async function(credentials, config) {
   console.log("FOUND SESSIONS", sessions)
   let session = sessions[0]?.to
   if(!session) {
-    if(config.createSessionOnUpdate) {
-      session = app.generateUid()
+    if(config.createSessionOnUpdate) {      
+      session = createHmac('sha256', config.sessionHmacSecret || 'secret')
+        .update(credentials.sessionKey)
+        .digest('base64')
     } else {
       const createResult = await app.triggerService(definition.name, {
         type: "createSessionKeyIfNotExists",
