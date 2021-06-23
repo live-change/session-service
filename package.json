@@ -1,0 +1,26 @@
+{
+  "name": "@live-change/session-service",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "NODE_ENV=test tape tests/*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/live-change/session-service.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/live-change/session-service/issues"
+  },
+  "homepage": "https://github.com/live-change/session-service",    
+  "author": {
+    "email": "michal@laszczewski.pl",
+    "name": "Michał Łaszczewski",
+    "url": "https://www.viamage.com/"
+  },  
+  "dependencies": {
+    "blue-tape": "^1.0.0"
+  }
+}
