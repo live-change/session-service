@@ -5,7 +5,7 @@ const definition = app.createServiceDefinition({
   name: "session"
 })
 
-const User = definition.foreignModel('users', 'User')
+const User = definition.foreignModel('user', 'User')
 
 const Session = definition.model({
   name: "Session",
@@ -50,7 +50,7 @@ definition.view({
           roles: []
         })
         let storedObj = undefined
-        await input.table(tableName).object(session).onChange(async (obj, oldObj) => {              
+        await input.table(tableName).object(session).onChange(async (obj, oldObj) => {
           const mappedObj = mapper(obj)
           //output.debug("MAPPED DATA", session, "OBJ", mappedObj, "OLD OBJ", storedObj)
           await output.change(mappedObj, storedObj)
@@ -279,7 +279,7 @@ definition.authenticator(async function(credentials, config) {
   console.log("FOUND SESSIONS", sessions)
   let session = sessions[0]?.to
   if(!session) {
-    if(config.createSessionOnUpdate) {      
+    if(config.createSessionOnUpdate) {
       session = createHmac('sha256', config.sessionHmacSecret || 'secret')
         .update(credentials.sessionKey)
         .digest('base64')
@@ -288,18 +288,20 @@ definition.authenticator(async function(credentials, config) {
         type: "createSessionKeyIfNotExists",
         sessionKey
       })
-      console.log("CREATE SESSION RESULT", createResult)  
+      console.log("CREATE SESSION RESULT", createResult)
       session = createResult.session
-    } 
+    }
   }
   credentials.session = session
 })
 
-const { PropertyDefinition, ViewDefinition, IndexDefinition } = require("@live-change/framework")
+const { PropertyDefinition, ViewDefinition, IndexDefinition, ActionDefinition } = require("@live-change/framework")
 
 definition.processor(function(service, app) {
-  for(let modelName in service.models) {    
+  for(let modelName in service.models) {
     const model = service.models[modelName]
+    const modelProperties = Object.keys(model.properties)
+    const modelPropertyName = modelName.slice(0, 1).toLowerCase() + modelName.slice(1)
     function modelRuntime() {
       return service._runtime.models[modelName]
     }
@@ -333,8 +335,131 @@ definition.processor(function(service, app) {
           }
         })
       }
-      if(config.writeAccess) {
+      if(config.setAccess || config.writeAccess) {
+        const actionName = 'setSession' + modelName
+        service.actions[actionName] = new ActionDefinition({
+          name: actionName,
+          access: config.createAccess || config.writeAccess,
+          async execute(properties, { client, service }, emit) {
+            const id = client.session
+            return await modelRuntime().create({ ...properties, id, session: client.session })
+          }
+        })
+      }
+      if(config.resetAccess || config.writeAccess) {
+        const actionName = 'resetSession' + modelName
+        service.actions[actionName] = new ActionDefinition({
+          name: actionName,
+          access: config.createAccess || config.writeAccess,
+          async execute(properties, { client, service }, emit) {
+            const entity = await modelRuntime().indexObjectGet('bySession', client.session)
+            if(!entity) throw new Error('not_found')
+            await modelRuntime().delete(entity.id)
+          }
+        })
+      }
+    }
+    if(model.sessionItem) {
+      const config = model.sessionItem
+      const writeableProperties = modelProperties || config.writableProperties
 
+      model.properties.session = new PropertyDefinition({
+        type: Session,
+        validation: ['nonEmpty']
+      })
+      if(!model.indexes) model.indexes = {}
+      model.indexes.bySession = new IndexDefinition({
+        property: 'session'
+      })
+      for(const sorfField of config.sortBy) {
+        const sortFieldUc = sorfField.slice(0, 1).toUpperCase() + sortField.slice(1)
+        model.indexes['bySession' + sortFieldUc] = new IndexDefinition({
+          property: ['session', sortField]
+        })
+      }
+
+      if(config.readAccess) {
+        const viewName = 'session' + modelName + 's'
+        service.views[viewName] = new ViewDefinition({
+          name: viewName,
+          access: config.readAccess,
+          daoPath(range, { client, context }) {
+            return modelRuntime.sortedIndexRangePath('bySession', [client.session], range )
+          }
+        })
+        for(const sorfField of config.sortBy) {
+          const sortFieldUc = sorfField.slice(0, 1).toUpperCase() + sortField.slice(1)
+          const viewName = 'session' + modelName + 'sBy' + sortFieldUc
+          service.views[viewName] = new ViewDefinition({
+            name: viewName,
+            access: config.readAccess,
+            daoPath(range, { client, context }) {
+              return modelRuntime.sortedIndexRangePath('bySession' + sortFieldUc, [client.session], range )
+            }
+          })
+        }
+      }
+      if(config.publicAccess) {
+        const viewName = 'publicSession' + modelName + 's'
+        service.views[viewName] = new ViewDefinition({
+          name: viewName,
+          access: config.publicAccess,
+          daoPath(range, { client, context }) {
+            return modelRuntime.sortedIndexRangePath('bySession', [range.session], { ...range, session: undefined } )
+          }
+        })
+        for(const sorfField of config.sortBy) {
+          const sortFieldUc = sorfField.slice(0, 1).toUpperCase() + sortField.slice(1)
+          const viewName = 'publicSession' + modelName + 'sBy' + sortFieldUc
+          service.views[viewName] = new ViewDefinition({
+            name: viewName,
+            access: config.publicAccess,
+            daoPath(range, { client, context }) {
+              return modelRuntime.sortedIndexRangePath('bySession' + sortFieldUc, [client.session], range )
+            }
+          })
+        }
+      }
+      if(config.createAccess || config.writeAccess) {
+        const actionName = 'createSession' + modelName
+        service.actions[actionName] = new ActionDefinition({
+          name: actionName,
+          access: config.createAccess || config.writeAccess,
+          async execute(properties, { client, service }, emit) {
+            const id = app.generateUid()
+            return await modelRuntime().create({ ...properties, id, session: client.session })
+          }
+        })
+      }
+      if(config.updateAccess || config.writeAccess) {
+        const actionName = 'updateSession' + modelName
+        service.actions[actionName] = new ActionDefinition({
+          name: actionName,
+          access: config.updateAccess || config.writeAccess,
+          async execute(properties, { client, service }, emit) {
+            const entity = await modelRuntime().get(properties[modelPropertyName])
+            if(!entity) throw new Error('not_found')
+            if(entity.session != client.session) throw new Error('not_authorized')
+            let updateObject = {}
+            for(const propertyName of writeableProperties) {
+              updateObject[propertyName] = properties[propertyName]
+            }
+            return await modelRuntime().update(entity.id, updateObject)
+          }
+        })
+      }
+      if(config.deleteAccess || config.writeAccess) {
+        const actionName = 'deleteSession' + modelName
+        service.actions[actionName] = new ActionDefinition({
+          name: actionName,
+          access: config.createAccess || config.writeAccess,
+          async execute(properties, { client, service }, emit) {
+            const entity = await modelRuntime().get(properties[modelPropertyName])
+            if(!entity) throw new Error('not_found')
+            if(entity.session != client.session) throw new Error('not_authorized')
+            await modelRuntime().delete(entity.id)
+          }
+        })
       }
     }
   }
