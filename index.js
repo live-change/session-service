@@ -225,7 +225,7 @@ definition.event({
         }).onChange((ind, oldInd) => {
           if(ind && ind.to) {
             output.table(table).update(ind.to, [
-              { op: 'reverseMerge', value: { id: session } },
+              { op: 'reverseMerge', value: { id: ind.to } },
               { op: 'merge', value: { user: null, roles: [], expire: null } }
             ])
           }
