@@ -1,4 +1,5 @@
-const app = require("@live-change/framework").app()
+const App = require("@live-change/framework")
+const app = App.app()
 const { createHmac } = require('crypto')
 
 const definition = app.createServiceDefinition({
@@ -300,6 +301,9 @@ const { PropertyDefinition, ViewDefinition, IndexDefinition, ActionDefinition } 
 definition.processor(function(service, app) {
   for(let modelName in service.models) {
     const model = service.models[modelName]
+    console.trace("PROCESS MODEL "+modelName)
+    if(model.properties.session) throw new Error('session property already exists!!!')
+    const originalModelProperties = { ...model.properties }
     const modelProperties = Object.keys(model.properties)
     const modelPropertyName = modelName.slice(0, 1).toLowerCase() + modelName.slice(1)
     function modelRuntime() {
@@ -363,6 +367,8 @@ definition.processor(function(service, app) {
       const config = model.sessionItem
       const writeableProperties = modelProperties || config.writableProperties
 
+      console.log("SESSIONM ITEM", model)
+
       model.properties.session = new PropertyDefinition({
         type: Session,
         validation: ['nonEmpty']
@@ -371,8 +377,8 @@ definition.processor(function(service, app) {
       model.indexes.bySession = new IndexDefinition({
         property: 'session'
       })
-      for(const sorfField of config.sortBy) {
-        const sortFieldUc = sorfField.slice(0, 1).toUpperCase() + sortField.slice(1)
+      for(const sortField of config.sortBy) {
+        const sortFieldUc = sortField.slice(0, 1).toUpperCase() + sortField.slice(1)
         model.indexes['bySession' + sortFieldUc] = new IndexDefinition({
           property: ['session', sortField]
         })
@@ -383,18 +389,20 @@ definition.processor(function(service, app) {
         service.views[viewName] = new ViewDefinition({
           name: viewName,
           access: config.readAccess,
+          properties: App.rangeProperties,
           daoPath(range, { client, context }) {
-            return modelRuntime.sortedIndexRangePath('bySession', [client.session], range )
+            return modelRuntime().sortedIndexRangePath('bySession', [client.session], range )
           }
         })
-        for(const sorfField of config.sortBy) {
-          const sortFieldUc = sorfField.slice(0, 1).toUpperCase() + sortField.slice(1)
+        for(const sortField of config.sortBy) {
+          const sortFieldUc = sortField.slice(0, 1).toUpperCase() + sortField.slice(1)
           const viewName = 'session' + modelName + 'sBy' + sortFieldUc
           service.views[viewName] = new ViewDefinition({
             name: viewName,
             access: config.readAccess,
+            properties: App.rangeProperties,
             daoPath(range, { client, context }) {
-              return modelRuntime.sortedIndexRangePath('bySession' + sortFieldUc, [client.session], range )
+              return modelRuntime().sortedIndexRangePath('bySession' + sortFieldUc, [client.session], range )
             }
           })
         }
@@ -404,8 +412,9 @@ definition.processor(function(service, app) {
         service.views[viewName] = new ViewDefinition({
           name: viewName,
           access: config.publicAccess,
+          properties: App.rangeProperties,
           daoPath(range, { client, context }) {
-            return modelRuntime.sortedIndexRangePath('bySession', [range.session], { ...range, session: undefined } )
+            return modelRuntime().sortedIndexRangePath('bySession', [range.session], { ...range, session: undefined } )
           }
         })
         for(const sorfField of config.sortBy) {
@@ -414,20 +423,26 @@ definition.processor(function(service, app) {
           service.views[viewName] = new ViewDefinition({
             name: viewName,
             access: config.publicAccess,
+            properties: App.rangeProperties,
             daoPath(range, { client, context }) {
-              return modelRuntime.sortedIndexRangePath('bySession' + sortFieldUc, [client.session], range )
+              return modelRuntime().sortedIndexRangePath('bySession' + sortFieldUc, [client.session], range )
             }
           })
         }
       }
       if(config.createAccess || config.writeAccess) {
         const actionName = 'createSession' + modelName
+        console.log("OP", Object.keys(originalModelProperties))
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
           access: config.createAccess || config.writeAccess,
+          properties: {
+            ...originalModelProperties
+          },
           async execute(properties, { client, service }, emit) {
             const id = app.generateUid()
-            return await modelRuntime().create({ ...properties, id, session: client.session })
+            await modelRuntime().create({ ...properties, id, session: client.session })
+            return id
           }
         })
       }
@@ -436,6 +451,13 @@ definition.processor(function(service, app) {
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
           access: config.updateAccess || config.writeAccess,
+          properties: {
+            ...originalModelProperties,
+            [modelPropertyName]: {
+              type: model,
+              validation: ['nonEmpty']
+            }
+          },
           async execute(properties, { client, service }, emit) {
             const entity = await modelRuntime().get(properties[modelPropertyName])
             if(!entity) throw new Error('not_found')
@@ -453,6 +475,12 @@ definition.processor(function(service, app) {
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
           access: config.createAccess || config.writeAccess,
+          properties: {
+            [modelPropertyName]: {
+              type: model,
+              validation: ['nonEmpty']
+            }
+          },
           async execute(properties, { client, service }, emit) {
             const entity = await modelRuntime().get(properties[modelPropertyName])
             if(!entity) throw new Error('not_found')
