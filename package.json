@@ -21,6 +21,6 @@
     "url": "https://www.viamage.com/"
   },
   "dependencies": {
-    "blue-tape": "^1.0.0"
+    "@live-change/framework": "^0.5.7"
   }
 }
