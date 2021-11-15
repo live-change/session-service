@@ -12,7 +12,7 @@ definition.processor(function(service, app) {
       if (model.properties.session) throw new Error('session property already exists!!!')
       const originalModelProperties = {...model.properties}
       const modelProperties = Object.keys(model.properties)
-      const defaults = App.utils.generateDefault(modelProperties)
+      const defaults = App.utils.generateDefault(model.properties)
       const modelPropertyName = modelName.slice(0, 1).toLowerCase() + modelName.slice(1)
 
       function modelRuntime() {
@@ -40,7 +40,7 @@ definition.processor(function(service, app) {
       }
 
       if(config.readAccess) {
-        const viewName = 'session' + modelName + 's'
+        const viewName = 'mySession' + modelName + 's'
         service.views[viewName] = new ViewDefinition({
           name: viewName,
           access: config.readAccess,
@@ -52,7 +52,7 @@ definition.processor(function(service, app) {
         })
         for(const sortField of config.sortBy) {
           const sortFieldUc = sortField.slice(0, 1).toUpperCase() + sortField.slice(1)
-          const viewName = 'session' + modelName + 'sBy' + sortFieldUc
+          const viewName = 'mySession' + modelName + 'sBy' + sortFieldUc
           service.views[viewName] = new ViewDefinition({
             name: viewName,
             access: config.readAccess,
@@ -92,13 +92,19 @@ definition.processor(function(service, app) {
         service.events[eventName] = new EventDefinition({
           name: eventName,
           execute(properties) {
-            const data = properties.data
             const session = properties.session
             const id = properties[modelPropertyName]
+            let newObject = {}
+            for(const propertyName of writeableProperties) {
+              if(properties.hasOwnProperty(propertyName)) {
+                newObject[propertyName] = properties[propertyName]
+              }
+            }
+            const data = utils.mergeDeep({}, defaults, newObject)
             return modelRuntime().create({ ...data, session, id })
           }
         })
-        const actionName = 'createSession' + modelName
+        const actionName = 'createMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
           access: config.createAccess || config.writeAccess,
@@ -134,7 +140,7 @@ definition.processor(function(service, app) {
             return modelRuntime().update(id, { ...data, id, session })
           }
         })
-        const actionName = 'updateSession' + modelName
+        const actionName = 'updateMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
           access: config.updateAccess || config.writeAccess,
@@ -181,10 +187,10 @@ definition.processor(function(service, app) {
             return modelRuntime().delete(id)
           }
         })
-        const actionName = 'deleteSession' + modelName
+        const actionName = 'deleteMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
-          access: config.createAccess || config.writeAccess,
+          access: config.deleteAccess || config.writeAccess,
           properties: {
             [modelPropertyName]: {
               type: model,

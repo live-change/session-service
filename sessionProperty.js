@@ -7,13 +7,15 @@ definition.processor(function(service, app) {
 
   for(let modelName in service.models) {
     const model = service.models[modelName]
+    console.log("SP", modelName)
 
     if(model.sessionProperty) {
-      console.trace("PROCESS MODEL " + modelName)
+      console.log("MODEL " + modelName + " IS SESSION PROPERTY, CONFIG:", model.sessionProperty)
       if (model.properties.session) throw new Error('session property already exists!!!')
+
       const originalModelProperties = {...model.properties}
       const modelProperties = Object.keys(model.properties)
-      const defaults = App.utils.generateDefault(modelProperties)
+      const defaults = App.utils.generateDefault(model.properties)
       const modelPropertyName = modelName.slice(0, 1).toLowerCase() + modelName.slice(1)
 
       function modelRuntime() {
@@ -21,6 +23,13 @@ definition.processor(function(service, app) {
       }
 
       const config = model.sessionProperty
+      const writeableProperties = modelProperties || config.writableProperties
+
+      model.propertyOf = {
+        what: Session,
+        ...config
+      }
+
       model.properties.session = new PropertyDefinition({
         type: Session,
         validation: ['nonEmpty']
@@ -29,28 +38,19 @@ definition.processor(function(service, app) {
       model.indexes.bySession = new IndexDefinition({
         property: 'session'
       })
-      if(config.readAccess) {
-        const viewName = 'session' + modelName
+      if(config.sessionReadAccess) {
+        const viewName = 'mySession' + modelName
         service.views[viewName] = new ViewDefinition({
           name: viewName,
-          access: config.readAccess,
-          daoPath(params, {client, context}) {
-            return modelRuntime().indexObjectPath('bySession', client.session)
-          }
-        })
-      }
-      if(config.publicAccess) {
-        const viewName = 'publicSession' + modelName
-        service.views[viewName] = new ViewDefinition({
-          name: viewName,
-          access: config.publicAccess,
-          daoPath({session}, {client, context}) {
-            return modelRuntime().indexObjectPath('bySession', session)
+          access: config.sessionReadAccess,
+          daoPath(params, { client, context }) {
+            return modelRuntime().path(client.session)
+            //return modelRuntime().indexObjectPath('bySession', client.session)
           }
         })
       }
 
-      if(config.setAccess || config.writeAccess) {
+      if(config.sessionSetAccess || config.sessionWriteAccess) {
         const eventName = 'session' + modelName + 'Set'
         service.events[eventName] = new EventDefinition({
           name: eventName,
@@ -63,22 +63,37 @@ definition.processor(function(service, app) {
             return modelRuntime().create({...data, session, id: session})
           }
         })
-        const actionName = 'setSession' + modelName
+        const actionName = 'setMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
-          access: config.createAccess || config.writeAccess,
+          properties: {
+            ...originalModelProperties
+          },
+          access: config.sessionSetAccess || config.sessionWriteAccess,
+          skipValidation: true,
           queuedBy: (command) => command.client.session,
           waitForEvents: true,
           async execute(properties, {client, service}, emit) {
+            let newObject = {}
+            for(const propertyName of writeableProperties) {
+              if(properties.hasOwnProperty(propertyName)) {
+                newObject[propertyName] = properties[propertyName]
+              }
+            }
+            const data = App.utils.mergeDeep({}, defaults, newObject)
+            await App.validation.validate(data, validators, { source: action, action, service, app, client })
             emit({
               type: eventName,
               session: client.session,
-              data: properties || {}
+              data
             })
           }
         })
+        const action = service.actions[actionName]
+        const validators = App.validation.getValidators(action, service, action)
       }
-      if(config.updateAccess || config.writeAccess) {
+
+      if(config.sessionUpdateAccess || config.sessionWriteAccess) {
         const eventName = 'session' + modelName + 'Updated'
         service.events[eventName] = new EventDefinition({
           name: eventName,
@@ -88,13 +103,13 @@ definition.processor(function(service, app) {
             return modelRuntime().update(session, { ...data, session, id: session })
           }
         })
-        const actionName = 'updateSession' + modelName
+        const actionName = 'updateMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
           properties: {
             ...originalModelProperties
           },
-          access: config.updateAccess || config.writeAccess,
+          access: config.sessionUpdateAccess || config.sessionWriteAccess,
           skipValidation: true,
           queuedBy: (command) => command.client.session,
           waitForEvents: true,
@@ -119,7 +134,8 @@ definition.processor(function(service, app) {
         const action = service.actions[actionName]
         const validators = App.validation.getValidators(action, service, action)
       }
-      if(config.resetAccess || config.writeAccess) {
+
+      if(config.sessionResetAccess || config.sessionWriteAccess) {
         const eventName = 'session' + modelName + 'Reset'
         service.events[eventName] = new EventDefinition({
           name: eventName,
@@ -127,10 +143,10 @@ definition.processor(function(service, app) {
             return modelRuntime().delete(session)
           }
         })
-        const actionName = 'resetSession' + modelName
+        const actionName = 'resetMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
-          access: config.createAccess || config.writeAccess,
+          access: config.sessionResetAccess || config.sessionWriteAccess,
           queuedBy: (command) => command.client.session,
           waitForEvents: true,
           async execute(properties, {client, service}, emit) {
@@ -143,6 +159,7 @@ definition.processor(function(service, app) {
           }
         })
       }
+
     }
   }
 
