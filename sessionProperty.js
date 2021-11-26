@@ -51,18 +51,7 @@ definition.processor(function(service, app) {
       }
 
       if(config.sessionSetAccess || config.sessionWriteAccess) {
-        const eventName = 'session' + modelName + 'Set'
-        service.events[eventName] = new EventDefinition({
-          name: eventName,
-          properties: {
-            ...originalModelProperties
-          },
-          execute(properties) {
-            const data = properties.data
-            const session = properties.session
-            return modelRuntime().create({...data, session, id: session})
-          }
-        })
+        const eventName = 'sessionOwned' + modelName + 'Set'
         const actionName = 'setMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
@@ -84,7 +73,9 @@ definition.processor(function(service, app) {
             await App.validation.validate(data, validators, { source: action, action, service, app, client })
             emit({
               type: eventName,
-              session: client.session,
+              identifiers: {
+                session: client.session
+              },
               data
             })
           }
@@ -94,15 +85,7 @@ definition.processor(function(service, app) {
       }
 
       if(config.sessionUpdateAccess || config.sessionWriteAccess) {
-        const eventName = 'session' + modelName + 'Updated'
-        service.events[eventName] = new EventDefinition({
-          name: eventName,
-          execute(properties) {
-            const data = properties.data
-            const session = properties.session
-            return modelRuntime().update(session, { ...data, session, id: session })
-          }
-        })
+        const eventName = 'sessionOwned' + modelName + 'Updated'
         const actionName = 'updateMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
@@ -126,7 +109,9 @@ definition.processor(function(service, app) {
             await App.validation.validate(merged, validators, { source: action, action, service, app, client })
             emit({
               type: eventName,
-              session: client.session,
+              identifiers: {
+                session: client.session
+              },
               data: properties || {}
             })
           }
@@ -136,13 +121,7 @@ definition.processor(function(service, app) {
       }
 
       if(config.sessionResetAccess || config.sessionWriteAccess) {
-        const eventName = 'session' + modelName + 'Reset'
-        service.events[eventName] = new EventDefinition({
-          name: eventName,
-          execute({session}) {
-            return modelRuntime().delete(session)
-          }
-        })
+        const eventName = 'sessionOwned' + modelName + 'Reset'
         const actionName = 'resetMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
@@ -154,7 +133,9 @@ definition.processor(function(service, app) {
             if (!entity) throw new Error('not_found')
             emit({
               type: eventName,
-              session: client.session,
+              identifiers: {
+                session: client.session
+              }
             })
           }
         })

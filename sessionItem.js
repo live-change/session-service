@@ -22,24 +22,14 @@ definition.processor(function(service, app) {
       const config = model.sessionItem
       const writeableProperties = modelProperties || config.writableProperties
 
-      console.log("SESSIONM ITEM", model)
+      console.log("SESSION ITEM", model)
 
-      model.properties.session = new PropertyDefinition({
-        type: Session,
-        validation: ['nonEmpty']
-      })
-      if(!model.indexes) model.indexes = {}
-      model.indexes.bySession = new IndexDefinition({
-        property: 'session'
-      })
-      for(const sortField of config.sortBy) {
-        const sortFieldUc = sortField.slice(0, 1).toUpperCase() + sortField.slice(1)
-        model.indexes['bySession' + sortFieldUc] = new IndexDefinition({
-          property: ['session', sortField]
-        })
+      model.propertyOf = {
+        what: Session,
+        ...config
       }
 
-      if(config.readAccess) {
+      if(config.sessionReadAccess) {
         const viewName = 'mySession' + modelName + 's'
         service.views[viewName] = new ViewDefinition({
           name: viewName,
@@ -63,31 +53,8 @@ definition.processor(function(service, app) {
           })
         }
       }
-      if(config.publicAccess) {
-        const viewName = 'publicSession' + modelName + 's'
-        service.views[viewName] = new ViewDefinition({
-          name: viewName,
-          access: config.publicAccess,
-          properties: App.rangeProperties,
-          daoPath(range, { client, context }) {
-            return modelRuntime().sortedIndexRangePath('bySession', [range.session], { ...range, session: undefined } )
-          }
-        })
-        for(const sorfField of config.sortBy) {
-          const sortFieldUc = sorfField.slice(0, 1).toUpperCase() + sortField.slice(1)
-          const viewName = 'publicSession' + modelName + 'sBy' + sortFieldUc
-          service.views[viewName] = new ViewDefinition({
-            name: viewName,
-            access: config.publicAccess,
-            properties: App.rangeProperties,
-            daoPath(range, { client, context }) {
-              return modelRuntime().sortedIndexRangePath('bySession' + sortFieldUc, [client.session], range )
-            }
-          })
-        }
-      }
 
-      if(config.createAccess || config.writeAccess) {
+      if(config.sessionCreateAccess || config.sessionWriteAccess) {
         const eventName = 'session' + modelName + 'Created'
         service.events[eventName] = new EventDefinition({
           name: eventName,
@@ -129,7 +96,7 @@ definition.processor(function(service, app) {
           }
         })
       }
-      if(config.updateAccess || config.writeAccess) {
+      if(config.sessionUpdateAccess || config.sessionWriteAccess) {
         const eventName = 'session' + modelName + 'Updated'
         service.events[eventName] = new EventDefinition({
           name: eventName,
