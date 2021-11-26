@@ -24,7 +24,7 @@ definition.processor(function(service, app) {
 
       console.log("SESSION ITEM", model)
 
-      model.propertyOf = {
+      model.itemOf = {
         what: Session,
         ...config
       }
@@ -33,7 +33,7 @@ definition.processor(function(service, app) {
         const viewName = 'mySession' + modelName + 's'
         service.views[viewName] = new ViewDefinition({
           name: viewName,
-          access: config.readAccess,
+          access: config.sessionReadAccess,
           properties: App.rangeProperties,
           daoPath(range, { client, context }) {
             const path = modelRuntime().indexRangePath('bySession', [client.session], range )
@@ -55,26 +55,11 @@ definition.processor(function(service, app) {
       }
 
       if(config.sessionCreateAccess || config.sessionWriteAccess) {
-        const eventName = 'session' + modelName + 'Created'
-        service.events[eventName] = new EventDefinition({
-          name: eventName,
-          execute(properties) {
-            const session = properties.session
-            const id = properties[modelPropertyName]
-            let newObject = {}
-            for(const propertyName of writeableProperties) {
-              if(properties.hasOwnProperty(propertyName)) {
-                newObject[propertyName] = properties[propertyName]
-              }
-            }
-            const data = utils.mergeDeep({}, defaults, newObject)
-            return modelRuntime().create({ ...data, session, id })
-          }
-        })
+        const eventName = 'sessionOwned' + modelName + 'Created'
         const actionName = 'createMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
-          access: config.createAccess || config.writeAccess,
+          access: config.sessionCreateAccess || config.sessionWriteAccess,
           properties: {
             ...originalModelProperties,
             [modelPropertyName]: {
@@ -82,14 +67,18 @@ definition.processor(function(service, app) {
               validation: ['localId']
             }
           },
-          queuedBy: (command) => command.client.session,
+          //queuedBy: (command) => command.client.session,
           waitForEvents: true,
           async execute(properties, { client, service }, emit) {
             const id = properties[modelPropertyName] || app.generateUid()
+            const entity = await modelRuntime().get(id)
+            if(entity) throw 'exists'
             emit({
               type: eventName,
               [modelPropertyName]: id,
-              session: client.session,
+              identifiers: {
+                session: client.session,
+              },
               data: properties
             })
             return id
@@ -97,20 +86,11 @@ definition.processor(function(service, app) {
         })
       }
       if(config.sessionUpdateAccess || config.sessionWriteAccess) {
-        const eventName = 'session' + modelName + 'Updated'
-        service.events[eventName] = new EventDefinition({
-          name: eventName,
-          execute(properties) {
-            const data = properties.data
-            const id = properties[modelPropertyName]
-            const session = properties.session
-            return modelRuntime().update(id, { ...data, id, session })
-          }
-        })
+        const eventName = 'sessionOwned' + modelName + 'Updated'
         const actionName = 'updateMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
-          access: config.updateAccess || config.writeAccess,
+          access: config.sessionUpdateAccess || config.sessionWriteAccess,
           properties: {
             ...originalModelProperties,
             [modelPropertyName]: {
@@ -123,8 +103,8 @@ definition.processor(function(service, app) {
           waitForEvents: true,
           async execute(properties, { client, service }, emit) {
             const entity = await modelRuntime().get(properties[modelPropertyName])
-            if(!entity) throw new Error('not_found')
-            if(entity.session != client.session) throw new Error('not_authorized')
+            if(!entity) throw 'not_found'
+            if(entity.session != client.session) throw 'not_authorized'
             let updateObject = {}
             for(const propertyName of writeableProperties) {
               if(properties.hasOwnProperty(propertyName)) {
@@ -132,12 +112,13 @@ definition.processor(function(service, app) {
               }
             }
             const merged = App.utils.mergeDeep({}, entity, updateObject)
-            console.log("VALIDATE INTERNAL!!!!", merged)
             await App.validation.validate(merged, validators, { source: action, action, service, app, client })
             emit({
               type: eventName,
               [modelPropertyName]: entity.id,
-              session: client.session,
+              identifiers: {
+                session: client.session,
+              },
               data: properties
             })
           }
@@ -145,19 +126,12 @@ definition.processor(function(service, app) {
         const action = service.actions[actionName]
         const validators = App.validation.getValidators(action, service, action)
       }
-      if(config.deleteAccess || config.writeAccess) {
-        const eventName = 'session' + modelName + 'Deleted'
-        service.events[eventName] = new EventDefinition({
-          name: eventName,
-          execute(properties) {
-            const id = properties[modelPropertyName]
-            return modelRuntime().delete(id)
-          }
-        })
+      if(config.sessionDeleteAccess || config.sessionWriteAccess) {
+        const eventName = 'sessionOwned' + modelName + 'Deleted'
         const actionName = 'deleteMySession' + modelName
         service.actions[actionName] = new ActionDefinition({
           name: actionName,
-          access: config.deleteAccess || config.writeAccess,
+          access: config.sessionDeleteAccess || config.sessionWriteAccess,
           properties: {
             [modelPropertyName]: {
               type: model,
@@ -168,12 +142,14 @@ definition.processor(function(service, app) {
           waitForEvents: true,
           async execute(properties, { client, service }, emit) {
             const entity = await modelRuntime().get(properties[modelPropertyName])
-            if(!entity) throw new Error('not_found')
-            if(entity.session != client.session) throw new Error('not_authorized')
+            if(!entity) throw 'not_found'
+            if(entity.session != client.session) throw 'not_authorized'
             emit({
               type: eventName,
-              session: client.session,
-              [modelPropertyName]: entity.id
+              [modelPropertyName]: entity.id,
+              identifiers: {
+                session: client.session
+              }
             })
           }
         })
