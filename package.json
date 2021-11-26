@@ -22,6 +22,6 @@
   },
   "dependencies": {
     "@live-change/framework": "^0.5.7",
-    "@live-change/relations-plugin": "^0.1.8"
+    "@live-change/relations-plugin": "^0.1.9"
   }
 }
