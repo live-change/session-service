@@ -1,13 +1,12 @@
 const definition = require("./definition.js")
 const App = require("@live-change/framework")
 const { PropertyDefinition, ViewDefinition, IndexDefinition, ActionDefinition, EventDefinition } = App
-const Session = require("./model.js")
+const { Session } = require("./model.js")
 
 definition.processor(function(service, app) {
 
   for(let modelName in service.models) {
     const model = service.models[modelName]
-    console.log("SP", modelName)
 
     if(model.sessionProperty) {
       console.log("MODEL " + modelName + " IS SESSION PROPERTY, CONFIG:", model.sessionProperty)
@@ -29,14 +28,6 @@ definition.processor(function(service, app) {
         ...config
       }
 
-      model.properties.session = new PropertyDefinition({
-        type: Session,
-        validation: ['nonEmpty']
-      })
-      if(!model.indexes) model.indexes = {}
-      model.indexes.bySession = new IndexDefinition({
-        property: 'session'
-      })
       if(config.sessionReadAccess) {
         const viewName = 'mySession' + modelName
         service.views[viewName] = new ViewDefinition({

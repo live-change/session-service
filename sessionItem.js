@@ -1,7 +1,7 @@
 const definition = require("./definition.js")
 const App = require("@live-change/framework")
 const { PropertyDefinition, ViewDefinition, IndexDefinition, ActionDefinition, EventDefinition } = App
-const Session = require("./model.js")
+const { Session } = require("./model.js")
 
 definition.processor(function(service, app) {
 
